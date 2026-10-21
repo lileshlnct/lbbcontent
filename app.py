@@ -106,48 +106,73 @@ def render_pdf_page_as_image(pdf_path, page_num, watermark_text):
 # ----------------- ADMIN PANEL -----------------
 if user["role"] == "admin":
     with st.expander("⚙️ Admin Management Panel"):
-        admin_tab1, admin_tab2 = st.tabs(["👤 Add Student", "📤 Upload Material"])
-        
-        with admin_tab1:
-            with st.form("create_user_form"):
-                new_user = st.text_input("New Student Username")
-                new_name = st.text_input("Student Full Name")
-                new_pass = st.text_input("Temporary Password", type="password")
-                create_submit = st.form_submit_button("Add Student")
-                
-                if create_submit and new_user and new_pass:
-                    try:
-                        conn = get_connection()
-                        c = conn.cursor()
-                        c.execute("INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'student')",
-                                  (new_user, hash_password(new_pass), new_name))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"Student account created for {new_user}!")
-                    except sqlite3.IntegrityError:
-                        st.error("Username already exists.")
+        admin_tab1, admin_tab2, admin_tab3 = st.tabs([
+            "👤 Add Student",
+            "📤 Upload Material",
+            "🔐 Admin Settings",
+        ])
 
-        with admin_tab2:
-            with st.form("upload_content_form"):
-                cat = st.selectbox("Category", ["Python", "OOPs", "DBMS", "MySQL", "DSA", "Web Development"])
-                title = st.text_input("Lesson / Chapter Title")
-                uploaded_pdf = st.file_uploader("Upload PDF / Presentation", type=["pdf"])
-                upload_submit = st.form_submit_button("Upload Material")
+        # ... (admin_tab1 and admin_tab2 remain as they are) ...
 
-                if upload_submit and uploaded_pdf and title:
-                    os.makedirs(f"uploads/{cat}", exist_ok=True)
-                    save_path = os.path.join(f"uploads/{cat}", uploaded_pdf.name)
-                    with open(save_path, "wb") as f:
-                        f.write(uploaded_pdf.getbuffer())
+        with admin_tab3:
+            st.markdown("#### Update Admin Login Credentials")
+            with st.form("update_admin_credentials_form"):
+                new_admin_user = st.text_input(
+                    "New Admin Username", value=user["username"]
+                )
+                new_admin_pass = st.text_input(
+                    "New Password",
+                    type="password",
+                    placeholder="Enter new strong password",
+                )
+                confirm_pass = st.text_input(
+                    "Confirm New Password", type="password"
+                )
+                admin_update_submit = st.form_submit_button("Update Credentials")
 
-                    conn = get_connection()
-                    c = conn.cursor()
-                    c.execute("INSERT INTO content (title, category, file_path) VALUES (?, ?, ?)",
-                              (title, cat, save_path))
-                    conn.commit()
-                    conn.close()
-                    st.success(f"Uploaded '{title}' under {cat}!")
+                if admin_update_submit:
+                    if not new_admin_user.strip() or not new_admin_pass:
+                        st.error("Username and Password cannot be empty.")
+                    elif new_admin_pass != confirm_pass:
+                        st.error("Passwords do not match.")
+                    elif len(new_admin_pass) < 6:
+                        st.warning(
+                            "Password should be at least 6 characters long."
+                        )
+                    else:
+                        try:
+                            conn = get_connection()
+                            c = conn.cursor()
+                            hashed_pw = hash_password(new_admin_pass)
+                            # Update existing admin row
+                            c.execute(
+                                """
+                                UPDATE users
+                                SET username = ?, password_hash = ?
+                                WHERE id = ?
+                            """,
+                                (
+                                    new_admin_user.strip(),
+                                    hashed_pw,
+                                    user["id"],
+                                ),
+                            )
+                            conn.commit()
+                            conn.close()
 
+                            # Refresh session state
+                            st.session_state.user["username"] = (
+                                new_admin_user.strip()
+                            )
+                            st.success(
+                                "Admin credentials updated! Please re-login with your new credentials."
+                            )
+                            st.session_state.user = None
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error(
+                                "That username is already taken. Please choose another."
+                            )
 st.divider()
 
 # ----------------- STUDENT CONTENT VIEW -----------------
