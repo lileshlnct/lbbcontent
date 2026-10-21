@@ -114,6 +114,47 @@ if user["role"] == "admin":
 
         # ... (admin_tab1 and admin_tab2 remain as they are) ...
 
+        with admin_tab1:
+            with st.form("create_user_form"):
+                new_user = st.text_input("New Student Username")
+                new_name = st.text_input("Student Full Name")
+                new_pass = st.text_input("Temporary Password", type="password")
+                create_submit = st.form_submit_button("Add Student")
+                
+                if create_submit and new_user and new_pass:
+                    try:
+                        conn = get_connection()
+                        c = conn.cursor()
+                        c.execute("INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'student')",
+                                  (new_user, hash_password(new_pass), new_name))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Student account created for {new_user}!")
+                    except sqlite3.IntegrityError:
+                        st.error("Username already exists.")
+
+        with admin_tab2:
+            with st.form("upload_content_form"):
+                cat = st.selectbox("Category", ["Python", "OOPs", "DBMS", "MySQL", "DSA", "Web Development"])
+                title = st.text_input("Lesson / Chapter Title")
+                uploaded_pdf = st.file_uploader("Upload PDF / Presentation", type=["pdf"])
+                upload_submit = st.form_submit_button("Upload Material")
+
+                if upload_submit and uploaded_pdf and title:
+                    os.makedirs(f"uploads/{cat}", exist_ok=True)
+                    save_path = os.path.join(f"uploads/{cat}", uploaded_pdf.name)
+                    with open(save_path, "wb") as f:
+                        f.write(uploaded_pdf.getbuffer())
+
+                    conn = get_connection()
+                    c = conn.cursor()
+                    c.execute("INSERT INTO content (title, category, file_path) VALUES (?, ?, ?)",
+                              (title, cat, save_path))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"Uploaded '{title}' under {cat}!")
+                    
+        
         with admin_tab3:
             st.markdown("#### Update Admin Login Credentials")
             with st.form("update_admin_credentials_form"):
