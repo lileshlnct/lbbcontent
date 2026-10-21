@@ -119,13 +119,17 @@ def render_pdf_page_as_image(pdf_path, page_num, watermark_text):
 # ==========================================
 # 3. ADMIN MANAGEMENT PANEL
 # ==========================================
+# ==========================================
+# 3. ADMIN MANAGEMENT PANEL
+# ==========================================
 if user["role"] == "admin":
     with st.expander("⚙️ Admin Management & Analytics Panel", expanded=False):
-        adm_tab1, adm_tab2, adm_tab3, adm_tab4 = st.tabs([
+        adm_tab1, adm_tab2, adm_tab3, adm_tab4, adm_tab5 = st.tabs([
             "👤 Add Single Student", 
             "📁 Bulk Upload (CSV)", 
             "📤 Upload Material",
-            "📊 Student Activity Dashboard"
+            "📊 Student Activity Dashboard",
+            "🔐 Admin Settings"
         ])
 
         # --- TAB 1: Single Student ---
@@ -170,7 +174,6 @@ if user["role"] == "admin":
             st.markdown("##### Bulk Student Enrollment via CSV")
             st.caption("Upload a CSV file containing: `full_name`, `enrollment_no`, `email`, `contact_no`, `password`")
 
-            # Sample CSV Download Template
             sample_df = pd.DataFrame([
                 {"full_name": "John Doe", "enrollment_no": "EN202601", "email": "john@example.com", "contact_no": "9876543210", "password": "tempPass123"},
                 {"full_name": "Jane Smith", "enrollment_no": "EN202602", "email": "jane@example.com", "contact_no": "9876543211", "password": "tempPass456"}
@@ -210,7 +213,7 @@ if user["role"] == "admin":
                                     VALUES (?, ?, ?, ?, ?, ?, 'student')
                                 """, (e_no, e_no, e_mail, e_phone, hash_password(e_pw), e_name))
                                 success_count += 1
-                            except sqlite3.IntegrityError as err:
+                            except sqlite3.IntegrityError:
                                 errors.append(f"Row {index + 1} ({e_no}): Duplicate enrollment, email, or contact number.")
 
                         conn.commit()
@@ -255,7 +258,6 @@ if user["role"] == "admin":
             st.markdown("##### Real-Time Student Activity & Audit Logs")
             conn = get_connection()
             
-            # KPI Metrics
             kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
@@ -273,7 +275,6 @@ if user["role"] == "admin":
 
             st.divider()
 
-            # Activity Table
             logs_df = pd.read_sql_query("""
                 SELECT 
                     a.id as Log_ID,
@@ -295,6 +296,65 @@ if user["role"] == "admin":
 
             st.dataframe(logs_df, use_container_width=True, hide_index=True)
 
+        # --- TAB 5: Admin Settings & Profile ---
+        with adm_tab5:
+            st.markdown("##### Admin Profile & Security Settings")
+            st.caption("Change your administrative username or password. Updating password will require re-login.")
+            
+            with st.form("admin_profile_update_form"):
+                new_admin_name = st.text_input("Admin Display Name", value=user["name"]).strip()
+                new_admin_user = st.text_input("Admin Username (Login ID)", value=user.get("username", "admin")).strip()
+                new_admin_pass = st.text_input("New Password (leave empty to keep current)", type="password")
+                confirm_pass = st.text_input("Confirm New Password", type="password")
+                
+                profile_submit = st.form_submit_button("Save Changes", use_container_width=True)
+
+                if profile_submit:
+                    if not new_admin_name or not new_admin_user:
+                        st.error("Admin Name and Username cannot be empty.")
+                    elif new_admin_pass and new_admin_pass != confirm_pass:
+                        st.error("New passwords do not match.")
+                    elif new_admin_pass and len(new_admin_pass) < 6:
+                        st.warning("Password must be at least 6 characters long.")
+                    else:
+                        try:
+                            conn = get_connection()
+                            c = conn.cursor()
+                            
+                            # If password was provided, update credentials and force re-login
+                            if new_admin_pass:
+                                hashed_pw = hash_password(new_admin_pass)
+                                c.execute("""
+                                    UPDATE users 
+                                    SET full_name = ?, username = ?, password_hash = ?
+                                    WHERE id = ?
+                                """, (new_admin_name, new_admin_user, hashed_pw, user["id"]))
+                                conn.commit()
+                                conn.close()
+                                
+                                log_activity(user['id'], new_admin_user, "ADMIN_CREDENTIALS_UPDATE", "Admin updated password/username")
+                                st.success("Credentials updated successfully! Please re-login with your new credentials.")
+                                st.session_state.user = None
+                                st.rerun()
+                            else:
+                                # Just update name and username without forcing logout
+                                c.execute("""
+                                    UPDATE users 
+                                    SET full_name = ?, username = ?
+                                    WHERE id = ?
+                                """, (new_admin_name, new_admin_user, user["id"]))
+                                conn.commit()
+                                conn.close()
+                                
+                                st.session_state.user["name"] = new_admin_name
+                                st.session_state.user["username"] = new_admin_user
+                                st.session_state.user["identifier"] = new_admin_user
+                                log_activity(user['id'], new_admin_user, "ADMIN_PROFILE_UPDATE", "Admin updated display name/username")
+                                st.success("Profile details updated successfully!")
+                                st.rerun()
+                                
+                        except sqlite3.IntegrityError:
+                            st.error("That username is already taken. Please choose another.")
 st.divider()
 
 # ==========================================
