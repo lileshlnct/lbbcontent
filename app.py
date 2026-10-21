@@ -91,10 +91,10 @@ def render_pdf_page_as_image(pdf_path, page_num, watermark_text):
     # Add dynamic user watermark across the slide
     rect = page.rect
     page.insert_text(
-        fitz.Point(rect.width / 4, rect.height / 2),
+        fitz.Point(rect.width * 0.15, rect.height * 0.5),
         watermark_text,
         fontsize=24,
-        rotate=45,
+        rotate=0,
         color=(0.7, 0.7, 0.7),
         fill_opacity=0.3
     )
